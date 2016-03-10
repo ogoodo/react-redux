@@ -21,16 +21,32 @@ function warnAboutReceivingStore() {
   /* eslint-disable no-console */
 }
 
+/**
+ * Provider也是一个react组建
+ */
 export default class Provider extends Component {
+  //将store传递给子控件使用
+  //子控件通过 this.context.store这样子引用
+  //可以跨越多层子控件, 如果多个父控件有相同属性, 会返回离子控件最近的
+  //可以参考: https://segmentfault.com/a/1190000002878442
   getChildContext() {
     return { store: this.store }
   }
 
+  /**
+   * 以下调用时会传入store
+   * <Provider store={store}>
+   *    <App />
+   * </Provider>
+   */
   constructor(props, context) {
     super(props, context)
     this.store = props.store
   }
 
+  /**
+   * 自生不做渲染, 直接返回子节点(仅一个子节点)
+   */
   render() {
     const { children } = this.props
     return Children.only(children)
@@ -52,6 +68,10 @@ Provider.propTypes = {
   store: storeShape.isRequired,
   children: PropTypes.element.isRequired
 }
+
+/**
+ * getChildContext 指定的传递给子组件的属性需要先通过 childContextTypes 来指定，不然会产生错误
+ */
 Provider.childContextTypes = {
   store: storeShape.isRequired
 }
