@@ -18,6 +18,10 @@ function getDisplayName(WrappedComponent) {
   return WrappedComponent.displayName || WrappedComponent.name || 'Component'
 }
 
+/**
+ * 检测stateProps是否是纯对象
+ * 如果不是invariant函数会抛出一个错误
+ */
 function checkStateShape(stateProps, dispatch) {
   invariant(
     isPlainObject(stateProps),
@@ -31,6 +35,10 @@ function checkStateShape(stateProps, dispatch) {
 // Helps track hot reloading.
 let nextVersion = 0
 
+/**
+ * 
+ * @param mergeProps[function][可选] stateProps, dispatchProps, parentProps将这3个合并成一个的函数
+ */
 export default function connect(mapStateToProps, mapDispatchToProps, mergeProps, options = {}) {
   const shouldSubscribe = Boolean(mapStateToProps)
   const mapState = mapStateToProps || defaultMapStateToProps
@@ -45,6 +53,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
   // Helps track hot reloading.
   const version = nextVersion++
 
+  //合并3成1， 并判断接口是否是纯对象
   function computeMergedProps(stateProps, dispatchProps, parentProps) {
     const mergedProps = finalMergeProps(stateProps, dispatchProps, parentProps)
     invariant(
@@ -55,6 +64,9 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
     return mergedProps
   }
 
+  /**
+   * 调用此函数, 返回一包装在上下文的类
+   */
   return function wrapWithConnect(WrappedComponent) {
     class Connect extends Component {
       shouldComponentUpdate() {
@@ -79,6 +91,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       }
 
       computeStateProps(store, props) {
+        //这个地方写得有点绕, 主要是configureFinalMapState可能会嵌套调用computeStateProps增加了复杂度
         if (!this.finalMapStateToProps) {
           return this.configureFinalMapState(store, props)
         }
@@ -90,19 +103,23 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
         return checkStateShape(stateProps)
       }
-
+      //仅供computeStateProps调用
       configureFinalMapState(store, props) {
+        //mapState是connect传入的或是默认的state转props函数(一般来说是)
         const mappedState = mapState(store.getState(), props)
         const isFactory = typeof mappedState === 'function'
 
+        //最终用它将state转传子props
         this.finalMapStateToProps = isFactory ? mappedState : mapState
         this.doStatePropsDependOnOwnProps = this.finalMapStateToProps.length !== 1
 
+        //connect(@mapStateToProps参数是函数,返回第一表达式结果,否则返回第二表达式结果
         return isFactory ?
           this.computeStateProps(store, props) :
           checkStateShape(mappedState)
       }
 
+      //类似 computeStateProps
       computeDispatchProps(store, props) {
         if (!this.finalMapDispatchToProps) {
           return this.configureFinalMapDispatch(store, props)
@@ -116,6 +133,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         return checkStateShape(dispatchProps, true)
       }
 
+      //类似 configureFinalMapState
       configureFinalMapDispatch(store, props) {
         const mappedDispatch = mapDispatch(store.dispatch, props)
         const isFactory = typeof mappedDispatch === 'function'
@@ -128,8 +146,12 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
           checkStateShape(mappedDispatch, true)
       }
 
+      /**
+       * 从state根据connect的第一个参数(一个转换函数)生成一个传递给子控件的props
+       */
       updateStatePropsIfNeeded() {
         const nextStateProps = this.computeStateProps(this.store, this.props)
+        //如果没变化就不做更新
         if (this.stateProps && shallowEqual(nextStateProps, this.stateProps)) {
           return false
         }
@@ -137,7 +159,8 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         this.stateProps = nextStateProps
         return true
       }
-
+      
+      //类似 updateStatePropsIfNeeded
       updateDispatchPropsIfNeeded() {
         const nextDispatchProps = this.computeDispatchProps(this.store, this.props)
         if (this.dispatchProps && shallowEqual(nextDispatchProps, this.dispatchProps)) {
@@ -148,6 +171,9 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         return true
       }
 
+      /**
+       * 将connect传递过来参数一参数二生成的2个obj及父传过来的props, 3个东东合并成一个给子控件传过去(如果需要)
+       */
       updateMergedPropsIfNeeded() {
         const nextMergedProps = computeMergedProps(this.stateProps, this.dispatchProps, this.props)
         if (this.mergedProps && checkMergedEquals && shallowEqual(nextMergedProps, this.mergedProps)) {
@@ -162,6 +188,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         return typeof this.unsubscribe === 'function'
       }
 
+      //订阅stor改变消息
       trySubscribe() {
         if (shouldSubscribe && !this.unsubscribe) {
           this.unsubscribe = this.store.subscribe(this.handleChange.bind(this))
@@ -176,6 +203,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         }
       }
 
+      //组建装载, 订阅stor改变消息
       componentDidMount() {
         this.trySubscribe()
       }
@@ -202,6 +230,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
         this.finalMapStateToProps = null
       }
 
+      //store内容改变， 会调用这个函数, 有订阅
       handleChange() {
         if (!this.unsubscribe) {
           return
@@ -212,6 +241,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
         if (!pure || prevStoreState !== storeState) {
           this.hasStoreStateChanged = true
+          //这句会触发本类的render函数
           this.setState({ storeState })
         }
       }
@@ -224,7 +254,9 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
         return this.refs.wrappedInstance
       }
-
+      /**
+       * 自生不会渲染出界面元件, 会计算出包裹React类需要的数据， 然后渲染出界面元件返回
+       */
       render() {
         const {
           haveOwnPropsChanged,
@@ -245,7 +277,9 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
             haveOwnPropsChanged && this.doDispatchPropsDependOnOwnProps
         }
 
-        let haveStatePropsChanged = false
+        //根据connect(mapStateToProps 这个参数(是函数), 将state转换为传给子控件的props, 和老的对比是否有改变
+        //总的来说就是, 传给子的props中的state转换部分有没有变化
+        let haveStatePropsChanged = false   
         let haveDispatchPropsChanged = false
         if (shouldUpdateStateProps) {
           haveStatePropsChanged = this.updateStatePropsIfNeeded()
@@ -254,10 +288,13 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
           haveDispatchPropsChanged = this.updateDispatchPropsIfNeeded()
         }
 
+        //3个是否有合并成一个，或者合并后是否相对老的有改动
+        //(总数据是否变动开关)
         let haveMergedPropsChanged = true
         if (
           haveStatePropsChanged ||
           haveDispatchPropsChanged ||
+          //haveOwnPropsChanged在componentWillReceiveProps函数里会设定为true
           haveOwnPropsChanged
         ) {
           haveMergedPropsChanged = this.updateMergedPropsIfNeeded()
@@ -265,11 +302,14 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
           haveMergedPropsChanged = false
         }
 
+        //如果数据都没变动, 又存在了渲染的老元件, 那就返回老元件就行了******
         if (!haveMergedPropsChanged && renderedElement) {
           return renderedElement
         }
 
+        //这个开关是connect函数传递进来的
         if (withRef) {
+          // 传递给子控件的数据, 都是通过this.mergedProps他传的      重点      重点      重点
           this.renderedElement = createElement(WrappedComponent, {
             ...this.mergedProps,
             ref: 'wrappedInstance'
@@ -286,9 +326,12 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
 
     Connect.displayName = `Connect(${getDisplayName(WrappedComponent)})`
     Connect.WrappedComponent = WrappedComponent
+    //引用父元件数据需要申明
+    //this.context.store 这样子引用
     Connect.contextTypes = {
       store: storeShape
     }
+    //这个会传递些什么值来， 还没确定          看          看          看
     Connect.propTypes = {
       store: storeShape
     }
