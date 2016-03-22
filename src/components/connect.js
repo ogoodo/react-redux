@@ -76,6 +76,7 @@ export default function connect(mapStateToProps, mapDispatchToProps, mergeProps,
       constructor(props, context) {
         super(props, context)
         this.version = version
+        //从Provider传递过来的props.store获取, 或者从祖先Component处获得store 
         this.store = props.store || context.store
 
         invariant(this.store,
